@@ -1,0 +1,12 @@
+<label>풀이
+  <textarea name="solution" class="code" rows="10" required>
+<%= values.solution || '' %></textarea>
+</label>
+<fieldset>
+  <legend>결과</legend>
+  <label><input type="radio" name="result" value="맞음" <%= values.result !== '틀림' ? 'checked' : '' %>> 맞음</label>
+  <label><input type="radio" name="result" value="틀림" <%= values.result === '틀림' ? 'checked' : '' %>> 틀림</label>
+</fieldset>
+<label>틀린 이유 (틀림이면 필수)
+  <textarea name="reason" rows="3"><%= values.reason || '' %></textarea>
+</label>

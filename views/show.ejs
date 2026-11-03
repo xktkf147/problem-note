@@ -1,0 +1,24 @@
+<%- include('partials/head', { title: `${problem.subject} #${problem.number}` }) %>
+<h1><%= problem.subject %> #<%= problem.number %> <span class="badge badge-<%= problem.status %>"><%= problem.status %></span></h1>
+<p class="meta">기록 <%= formatKst(problem.created_at) %> · 시도 <%= problem.attempts.length %>회</p>
+<section>
+  <h2>문제</h2>
+  <div class="problem"><%= problem.content %></div>
+</section>
+<% problem.attempts.forEach((a) => { %>
+<section class="attempt">
+  <h2>시도 <%= a.attempt_no %> <span class="badge badge-<%= a.result %>"><%= a.result %></span></h2>
+  <p class="meta"><%= formatKst(a.created_at) %></p>
+  <pre><code><%= a.solution %></code></pre>
+  <% if (a.result === '틀림') { %><p class="reason"><strong>틀린 이유:</strong> <%= a.reason %></p><% } %>
+</section>
+<% }) %>
+<section>
+  <h2>다시 풀기</h2>
+  <%- include('partials/errors', { errors }) %>
+  <form method="post" action="/problems/<%= problem.id %>/attempts">
+    <%- include('partials/attempt-fields', { values }) %>
+    <button type="submit">시도 <%= problem.attempts.length + 1 %> 추가</button>
+  </form>
+</section>
+<%- include('partials/foot') %>

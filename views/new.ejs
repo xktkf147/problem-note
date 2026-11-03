@@ -1,0 +1,18 @@
+<%- include('partials/head', { title: '새 문제' }) %>
+<h1>새 문제 기록</h1>
+<%- include('partials/errors', { errors }) %>
+<form method="post" action="/problems">
+  <fieldset>
+    <legend>과목</legend>
+    <label><input type="radio" name="subject" value="Java" <%= values.subject !== 'DB' ? 'checked' : '' %>> Java</label>
+    <label><input type="radio" name="subject" value="DB" <%= values.subject === 'DB' ? 'checked' : '' %>> DB</label>
+  </fieldset>
+  <label>문제 내용
+    <textarea name="content" rows="6" required>
+<%= values.content || '' %></textarea>
+  </label>
+  <h2>시도 1</h2>
+  <%- include('partials/attempt-fields', { values }) %>
+  <button type="submit">저장</button>
+</form>
+<%- include('partials/foot') %>
