@@ -2,6 +2,12 @@
 
 Java·DB(SQL) 문제를 하나씩 기록하고, 풀이 시도(풀이·결과·틀린 이유)를 순서대로 쌓아 두는 1인용 풀이 노트입니다.
 
+## 문서
+
+- [PRD.md](PRD.md) — 무엇을 만드는지, 범위, 검증 기록
+- [PLAN.md](PLAN.md) — 구현 계획
+- [retrospective.md](retrospective.md) — 회고
+
 ## 실행 방법
 
 Node.js 22.13 이상 (24 권장)이 필요합니다. (`node:sqlite` 내장 사용)
@@ -47,9 +53,3 @@ DB 과목 문제는 Java와 별도로 DB #1부터 번호가 붙고, SQL 줄바�
 ## 배포
 
 Render 무료 Web Service에 올릴 수 있습니다(Build Command: `npm install`, Start Command: `npm start`). 무료 요금제는 서버가 재시작되면 SQLite 데이터가 초기화됩니다. 다음 단계에서 Supabase로 전환 예정입니다.
-
-## 문서
-
-- [PRD.md](PRD.md) — 무엇을 만드는지, 범위, 검증 기록
-- [PLAN.md](PLAN.md) — 구현 계획
-- [retrospective.md](retrospective.md) — 회고
