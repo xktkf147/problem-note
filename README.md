@@ -44,6 +44,10 @@ npm start
 
 DB 과목 문제는 Java와 별도로 DB #1부터 번호가 붙고, SQL 줄바꿈·들여쓰기도 유지된다.
 
+## 배포
+
+Render 무료 Web Service에 올릴 수 있습니다(Build Command: `npm install`, Start Command: `npm start`). 무료 요금제는 서버가 재시작되면 SQLite 데이터가 초기화됩니다. 다음 단계에서 Supabase로 전환 예정입니다.
+
 ## 문서
 
 - [PRD.md](PRD.md) — 무엇을 만드는지, 범위, 검증 기록
