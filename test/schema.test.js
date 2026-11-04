@@ -155,6 +155,22 @@ test('SSL: Supabase CA 인증서로 검증하고 rejectUnauthorized를 끄지 �
   assert.doesNotMatch(ssl.ca, /PRIVATE KEY/);
 });
 
+test('연결 풀의 error 이벤트가 프로세스를 죽이지 않고 로그만 남긴다', async () => {
+  const db = createPgDb('postgres://x:x@127.0.0.1:1/x');
+  const logged = [];
+  const orig = console.error;
+  console.error = (m) => logged.push(m);
+  try {
+    // 처리기가 없으면 EventEmitter가 이 오류를 그대로 던진다.
+    assert.doesNotThrow(() => db.pool.emit('error', Object.assign(new Error('연결이 끊어졌습니다'), { code: '57P01' })));
+  } finally {
+    console.error = orig;
+    await db.close();
+  }
+  assert.equal(logged.length, 1);
+  assert.match(logged[0], /57P01.*연결이 끊어졌습니다/);
+});
+
 test('createPgDb: 연결 없이 만들 수 있고(풀은 지연 연결), 잘못된 스키마 이름은 거부', async () => {
   const db = createPgDb('postgres://x:x@127.0.0.1:1/x');
   await db.close();

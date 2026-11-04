@@ -23,6 +23,13 @@ function createPgDb(connectionString, { schema } = {}) {
   }
   const pool = new Pool({ connectionString, max: 5, ssl: sslOptions() });
 
+  // 놀고 있는 연결이 끊기면(DB 재시작·네트워크 끊김) pool이 'error'를 내보낸다.
+  // 처리기가 없으면 Node가 처리되지 않은 오류로 프로세스를 종료하므로 로그만 남긴다.
+  // 끊긴 연결은 pool이 버리고, 다음 요청 때 새로 연결한다. (접속 정보가 섞일 수 있는 err 전체는 찍지 않는다)
+  pool.on('error', (err) => {
+    console.error(`DB 연결 오류(무시하고 계속 실행): ${err.code || ''} ${err.message}`);
+  });
+
   // 빌려 온 연결마다 한 번만 search_path를 맞춘다(연결 이벤트에서 await 없이 보내면 pg 경고가 난다).
   const prepared = new WeakSet();
   async function checkout() {
@@ -49,6 +56,7 @@ function createPgDb(connectionString, { schema } = {}) {
   }
 
   return {
+    pool,
     query: run,
     exec: (sql) => run(sql),
     async tx(fn) {
