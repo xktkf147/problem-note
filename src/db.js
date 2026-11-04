@@ -22,13 +22,37 @@ function createPgDb(connectionString, { schema } = {}) {
     throw new Error(`스키마 이름이 올바르지 않습니다: ${schema}`);
   }
   const pool = new Pool({ connectionString, max: 5, ssl: sslOptions() });
-  if (schema) pool.on('connect', (client) => client.query(`SET search_path TO ${schema}`));
+
+  // 빌려 온 연결마다 한 번만 search_path를 맞춘다(연결 이벤트에서 await 없이 보내면 pg 경고가 난다).
+  const prepared = new WeakSet();
+  async function checkout() {
+    const client = await pool.connect();
+    if (schema && !prepared.has(client)) {
+      try {
+        await client.query(`SET search_path TO ${schema}`);
+        prepared.add(client);
+      } catch (err) {
+        client.release(err);
+        throw err;
+      }
+    }
+    return client;
+  }
+  async function run(sql, params) {
+    if (!schema) return pool.query(sql, params);
+    const client = await checkout();
+    try {
+      return await client.query(sql, params);
+    } finally {
+      client.release();
+    }
+  }
 
   return {
-    query: (sql, params) => pool.query(sql, params),
-    exec: (sql) => pool.query(sql),
+    query: run,
+    exec: (sql) => run(sql),
     async tx(fn) {
-      const client = await pool.connect();
+      const client = await checkout();
       try {
         await client.query('BEGIN');
         const out = await fn({ query: (sql, params) => client.query(sql, params) });
