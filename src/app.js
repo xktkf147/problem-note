@@ -1,7 +1,7 @@
 const path = require('node:path');
 const express = require('express');
 const { validateProblem, validateAttempt } = require('./validate');
-const { createProblem, addAttempt, getProblem } = require('./repo');
+const { createProblem, addAttempt, getProblem, listProblems, getSummary } = require('./repo');
 const { formatKst } = require('./format');
 
 function createApp(db) {
@@ -12,9 +12,13 @@ function createApp(db) {
   app.use(express.urlencoded({ extended: false }));
   app.use(express.static(path.join(__dirname, '..', 'public')));
 
-  // 목록 화면(4단계) 전까지 쓰는 임시 홈.
   app.get('/', (req, res) => {
-    res.render('home');
+    const onlyWrong = req.query.filter === 'wrong';
+    res.render('index', {
+      summary: getSummary(db),
+      problems: listProblems(db, { onlyWrong }),
+      onlyWrong,
+    });
   });
 
   app.get('/problems/new', (req, res) => {

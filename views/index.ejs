@@ -1,0 +1,27 @@
+<%- include('partials/head', { title: '목록' }) %>
+<section class="summary">
+  <div><strong><%= summary.Java %></strong><span>Java 푼 문제</span></div>
+  <div><strong><%= summary.DB %></strong><span>DB 푼 문제</span></div>
+  <div><strong><%= summary.today %></strong><span>오늘 푼 문제</span></div>
+</section>
+<p class="filter">
+  <% if (onlyWrong) { %>
+    <a class="btn" href="/">전체 보기</a> <span class="meta">상태가 '틀림'인 문제만 보는 중</span>
+  <% } else { %>
+    <a class="btn" href="/?filter=wrong">틀린 문제만 보기</a>
+  <% } %>
+</p>
+<% if (problems.length === 0) { %>
+  <p class="meta"><%= onlyWrong ? "'틀림' 상태인 문제가 없습니다." : '아직 기록한 문제가 없습니다. 위의 "+ 새 문제"로 시작하세요.' %></p>
+<% } else { %>
+<ul class="problem-list">
+  <% problems.forEach((p) => { %>
+  <li>
+    <a href="/problems/<%= p.id %>"><%= p.subject %> #<%= p.number %></a>
+    <span class="badge badge-<%= p.status %>"><%= p.status %></span>
+    <span class="meta">시도 <%= p.attemptCount %>회 · <%= formatKst(p.created_at) %></span>
+  </li>
+  <% }) %>
+</ul>
+<% } %>
+<%- include('partials/foot') %>
