@@ -100,3 +100,73 @@ test/                # node:test — status, validate, 시나리오
 ## 열린 가정 (필요하면 바꿀 수 있음)
 - "오늘 푼 문제 수"는 오늘 시도가 있는 문제 수로 정의(위).
 - 문제 수정·삭제 기능은 PRD에 없어 만들지 않음.
+
+---
+
+# 6단계: Supabase 전환
+
+브랜치 `supabase`에서만 진행한다. `main`은 Render에 배포 중이므로 건드리지 않는다.
+
+## 목적
+Render 무료 Web Service는 재시작 때 로컬 파일이 사라져 SQLite 기록이 초기화된다. 저장소를 Supabase(Postgres)로 바꿔 배포 사이트에서도 기록이 남게 한다. PRD 규칙과 화면 동작은 그대로 두는 **저장소 교체**이며 기능 추가는 없다.
+
+## 큰 결정
+| 항목 | 결정 | 근거 |
+|---|---|---|
+| 접속 방식 | `pg`(node-postgres)로 Postgres에 직접 SQL 접속 (`DATABASE_URL`) | 문제+시도를 한 트랜잭션으로 묶고 락·트리거·제약을 그대로 쓰려면 SQL 접속이 필요 |
+| supabase-js(REST) | 쓰지 않음 | 여러 문장 트랜잭션·락이 안 되고, 서버에서 쓰려면 `service_role` 키가 필요 |
+| 접속 주소 | Session pooler 문자열(포트 5432) | Render 무료는 IPv4만 되는데 직접 접속 주소는 IPv6 전용 |
+| 스키마 적용 | `db/schema.sql`(멱등) + `npm run migrate` | 테스트와 실서버가 같은 SQL을 쓴다. 서버 시작 때는 DB를 건드리지 않는다 |
+| 코드 | `repo.js`·`app.js`를 `async/await`로 | `pg`는 비동기. Express 5가 async 핸들러 오류를 자동 처리 |
+| 의존성 | `pg` 추가, `node:sqlite` 제거, 개발용 `@electric-sql/pglite` 추가 | PGlite는 테스트용 |
+
+## PRD 규칙을 Postgres에서 지키는 방법
+- 과목: `CHECK (subject IN ('Java','DB'))`
+- 빈 값 거부: `CHECK (btrim(content, E' \t\r\n') <> '')` (풀이도 동일). SQLite의 `trim()`은 공백만 지웠지만 여기서는 탭·줄바꿈까지 빈 값으로 본다.
+- 틀림이면 이유 필수: `CHECK (result = '맞음' OR btrim(coalesce(reason,''), E' \t\r\n') <> '')`
+- 지난 시도 수정·삭제 금지: `attempts`의 `BEFORE UPDATE OR DELETE` 행 트리거 + `BEFORE TRUNCATE` 문장 트리거(TRUNCATE는 행 트리거를 건너뛰므로)
+- 외래키는 Postgres에서 항상 켜져 있다(`PRAGMA` 불필요).
+- "오늘(KST)": `(created_at AT TIME ZONE 'Asia/Seoul')::date`로 비교. `timestamptz DEFAULT now()`로 저장.
+- 공개 REST API 차단: 두 테이블에 `ENABLE ROW LEVEL SECURITY`(정책 없음). 서버는 DB 비밀번호로 직접 접속하므로 영향 없다.
+- id는 `integer`로 둔다(pg가 bigint를 문자열로 돌려주므로). COUNT도 `::int`.
+
+## 문제 + 첫 시도 저장과 과목별 번호
+- 한 트랜잭션: `pg_advisory_xact_lock(hashtext(subject))`로 같은 과목의 동시 저장을 줄 세운 뒤 `MAX(number)+1` → 문제 INSERT → 시도 1 INSERT. 하나라도 실패하면 전부 롤백.
+- 시도 추가: `SELECT ... FROM problems WHERE id = $1 FOR UPDATE`로 그 문제를 잠근 뒤 `MAX(attempt_no)+1`. 문제가 없으면 `null`(404).
+- 안전망: 기존 `UNIQUE (subject, number)`, `UNIQUE (problem_id, attempt_no)`.
+
+## 테스트 (실제 Supabase를 건드리지 않음)
+- 테스트 DB는 PGlite(WASM Postgres). 트리거·제약·락·`AT TIME ZONE`이 실제 Postgres와 같다.
+- `{ query(sql, params), tx(fn) }` 어댑터 하나를 `pg`(실서버)와 PGlite(테스트)가 같은 모양으로 구현한다.
+- 테스트는 `dotenv`를 읽지 않고 `DATABASE_URL`을 쓰지 않는다. `npm test`는 `DATABASE_URL`을 비운 채 실행한다.
+- 기존 37개는 `await`를 붙이는 방식으로 포팅하고, DB 규칙 테스트(FK, CHECK, UPDATE/DELETE/TRUNCATE 거부, 롤백)를 추가한다.
+- 한계: PGlite는 연결이 하나라 동시 요청 경합은 자동 테스트로 재현하지 못한다. 락은 실DB 수동 확인으로 본다.
+
+## 로그인 없이 쓰는 위험 (이번엔 미룸)
+공개 URL 하나로 누구나 읽고 쓰는 영구 DB가 된다.
+- 내용 노출: 배포 주소를 공개하지 않고 민감한 내용을 기록하지 않는다.
+- 스팸·장난 기록: 지난 시도는 트리거 때문에 지울 수 없으므로 정리가 어렵다(SQL 에디터에서 트리거를 끄거나 스키마를 지워야 함). 정리 방법을 README에 적는다.
+- 용량·정지: 무료 DB는 500MB 한도, 1주일 접속이 없으면 일시정지. 요청 본문 크기를 100kb로 제한한다.
+- Supabase 자체 REST API: RLS 활성화로 해결.
+- CSRF·속도 제한: 다음 단계(로그인과 함께). 다음 단계에서는 사용자별 `user_id` 컬럼과 RLS 정책을 둔다.
+
+## 비밀 키와 SSL
+- `service_role`·`anon` 키는 쓰지 않는다. `service_role`은 RLS를 우회하는 관리자 키라 유출 시 DB 전체가 열린다.
+- 비밀값은 DB 비밀번호가 든 `DATABASE_URL` 하나. 로컬은 `.env`(git 제외), 저장소에는 값 없는 `.env.example`, Render는 Environment 변수로 관리한다.
+- SSL은 `rejectUnauthorized: false` 대신 Supabase CA 인증서(`certs/supabase-ca.crt`)로 검증한다. 풀러 주소로 검증이 실패하면 그 이유와 위험을 README에 남기고 `sslOptions()` 한 곳만 바꾼다. `DATABASE_URL`에는 `?sslmode=`를 붙이지 않는다.
+
+## 구현 순서 (단계마다 확인 후 커밋)
+0. 브랜치 `supabase` 생성, 이 섹션 추가
+1. (사용자) Supabase 프로젝트 생성, `.env`에 `DATABASE_URL`, CA 인증서를 `certs/supabase-ca.crt`로 저장
+2. `db/schema.sql` + `scripts/migrate.js` + PGlite 테스트 헬퍼 + 스키마 규칙 테스트
+3. `src/db.js` 어댑터, `repo.js`·`app.js` 비동기 전환(락 포함), 기존 테스트 포팅
+4. `server.js`(DATABASE_URL 검사), `.env.example`, `package.json`(pg, `migrate`), 본문 크기 제한
+5. 실 Supabase 확인: 임시 스키마 `smoke`로 migrate와 수동 확인 → `DROP SCHEMA smoke CASCADE` → `public`에 migrate
+6. README(배포 섹션, 정리 방법, SSL 방식)
+
+## 배포 전환 순서
+`supabase` 브랜치 확인 → Render에 `DATABASE_URL` 등록 → Build Command를 `npm install && npm run migrate`로 변경 → 사용자가 main에 병합. 순서가 바뀌면 병합 직후 배포가 실패한다.
+
+## 열린 가정
+- 기존 로컬 `data/notes.db` 기록은 옮기지 않는다(원하면 가져오기 스크립트 추가).
+- 목록·상태 계산은 JS(`deriveStatus`)를 그대로 쓴다.
