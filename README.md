@@ -58,6 +58,26 @@ npm start
 
 DB 과목 문제는 Java와 별도로 DB #1부터 번호가 붙고, SQL 줄바꿈·들여쓰기도 유지된다.
 
+![확인 화면 8](screenshots/08-%EB%AA%A9%EB%A1%9D-%ED%99%94%EB%A9%B4.png)
+
+목록 화면: 위쪽에 Java·DB 푼 문제 수와 오늘 푼 문제 수, 아래에 최신순 목록(상태 뱃지·시도 횟수)이 보인다.
+
+![확인 화면 9](screenshots/09-%ED%8B%80%EB%A6%B0-%EB%AC%B8%EC%A0%9C%EB%A7%8C-%EB%B3%B4%EA%B8%B0.png)
+
+"틀린 문제만 보기"를 누르면 상태가 '틀림'인 문제(DB #2, Java #2)만 보이고, "전체 보기"로 돌아갈 수 있다.
+
+![확인 화면 10](screenshots/10-%EB%AA%A9%EB%A1%9D-%EC%B2%AB%EC%A4%84-%ED%91%9C%EC%8B%9C.png)
+
+목록에 문제 내용의 첫 줄이 함께 보이고, 긴 문제(DB #3)는 "…"로 잘린다.
+
+![확인 화면 11](screenshots/11-Render-%EC%9E%AC%EC%8B%9C%EC%9E%91-%EC%9D%B4%EB%B2%A4%ED%8A%B8.png)
+
+Render 재시작 이벤트(Service restarted by you, 3:53 PM).
+
+![확인 화면 12](screenshots/12-%EC%9E%AC%EC%8B%9C%EC%9E%91-%ED%9B%84-%EA%B8%B0%EB%A1%9D-%EC%9C%A0%EC%A7%80.png)
+
+재시작 뒤에도 15:51에 기록한 DB #1이 Supabase에 그대로 남아 있다.
+
 ## 배포 (Render + Supabase)
 
 기록은 Supabase에 저장되므로, Render 무료 Web Service가 재시작되거나 다시 배포돼도 기록이 남습니다.
