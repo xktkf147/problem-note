@@ -1,9 +1,8 @@
-require('dotenv').config();
-const { openDb } = require('./db');
+require('dotenv').config({ quiet: true });
+const { createPgDb } = require('./db');
 const { createApp } = require('./app');
 
 const PORT = process.env.PORT || 3000;
-const DB_PATH = process.env.DB_PATH || './data/notes.db';
 
 function fail(message, err) {
   console.error(`서버를 시작하지 못했습니다: ${message}`);
@@ -11,11 +10,16 @@ function fail(message, err) {
   process.exit(1);
 }
 
+if (!process.env.DATABASE_URL) {
+  fail('DATABASE_URL이 설정되어 있지 않습니다. .env 또는 Render 환경 변수를 확인하세요.');
+}
+
 let db;
 try {
-  db = openDb(DB_PATH);
+  // 풀은 첫 요청 때 연결하므로 서버를 띄우는 데는 DB 접속이 필요 없다.
+  db = createPgDb(process.env.DATABASE_URL, { schema: process.env.DATABASE_SCHEMA || undefined });
 } catch (err) {
-  fail(`DB를 열 수 없습니다 (${DB_PATH})`, err);
+  fail('DB 설정이 올바르지 않습니다.', err);
 }
 
 // Express 5는 listen 실패(포트 사용 중 등)를 콜백의 첫 인자로 넘긴다.

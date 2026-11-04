@@ -1,51 +1,48 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { DatabaseSync } = require('node:sqlite');
+const { Pool } = require('pg');
 
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS problems (
-  id         INTEGER PRIMARY KEY,
-  subject    TEXT NOT NULL CHECK (subject IN ('Java', 'DB')),
-  number     INTEGER NOT NULL,
-  content    TEXT NOT NULL CHECK (length(trim(content)) > 0),
-  created_at TEXT NOT NULL,
-  UNIQUE (subject, number)
-);
+const CA_PATH = path.join(__dirname, '..', 'certs', 'supabase-ca.crt');
+const SCHEMA_PATH = path.join(__dirname, '..', 'db', 'schema.sql');
+const SCHEMA_NAME = /^[a-z_][a-z0-9_]*$/;
 
-CREATE TABLE IF NOT EXISTS attempts (
-  id         INTEGER PRIMARY KEY,
-  problem_id INTEGER NOT NULL REFERENCES problems(id),
-  attempt_no INTEGER NOT NULL,
-  solution   TEXT NOT NULL CHECK (length(trim(solution)) > 0),
-  result     TEXT NOT NULL CHECK (result IN ('맞음', '틀림')),
-  reason     TEXT,
-  created_at TEXT NOT NULL,
-  UNIQUE (problem_id, attempt_no),
-  CHECK (result = '맞음' OR length(trim(coalesce(reason, ''))) > 0)
-);
-
-CREATE TRIGGER IF NOT EXISTS attempts_no_update
-BEFORE UPDATE ON attempts
-BEGIN
-  SELECT RAISE(ABORT, '지난 시도는 수정할 수 없습니다');
-END;
-
-CREATE TRIGGER IF NOT EXISTS attempts_no_delete
-BEFORE DELETE ON attempts
-BEGIN
-  SELECT RAISE(ABORT, '지난 시도는 삭제할 수 없습니다');
-END;
-`;
-
-// 연결을 열 때마다 외래키를 켜고(SQLite 기본값은 꺼짐), 그 다음에 스키마를 만든다.
-function openDb(dbPath) {
-  if (dbPath !== ':memory:') {
-    fs.mkdirSync(path.dirname(path.resolve(dbPath)), { recursive: true });
-  }
-  const db = new DatabaseSync(dbPath);
-  db.exec('PRAGMA foreign_keys = ON;');
-  db.exec(SCHEMA);
-  return db;
+// Supabase CA 인증서로 서버 인증서를 검증한다. (rejectUnauthorized: false를 쓰지 않는다)
+function sslOptions() {
+  return { ca: fs.readFileSync(CA_PATH, 'utf8'), rejectUnauthorized: true };
 }
 
-module.exports = { openDb };
+function schemaSql() {
+  return fs.readFileSync(SCHEMA_PATH, 'utf8');
+}
+
+// pg 연결 풀을 { query, exec, tx, close } 어댑터로 감싼다. 풀은 첫 쿼리 때 연결한다.
+// schema를 주면 연결마다 search_path를 그 스키마로 맞춘다(임시 스키마로 시험할 때 사용).
+function createPgDb(connectionString, { schema } = {}) {
+  if (schema !== undefined && !SCHEMA_NAME.test(schema)) {
+    throw new Error(`스키마 이름이 올바르지 않습니다: ${schema}`);
+  }
+  const pool = new Pool({ connectionString, max: 5, ssl: sslOptions() });
+  if (schema) pool.on('connect', (client) => client.query(`SET search_path TO ${schema}`));
+
+  return {
+    query: (sql, params) => pool.query(sql, params),
+    exec: (sql) => pool.query(sql),
+    async tx(fn) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const out = await fn({ query: (sql, params) => client.query(sql, params) });
+        await client.query('COMMIT');
+        return out;
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+    close: () => pool.end(),
+  };
+}
+
+module.exports = { createPgDb, sslOptions, schemaSql };

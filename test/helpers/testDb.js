@@ -2,7 +2,7 @@
 // 실제 Supabase에는 절대 접속하지 않는다.
 delete process.env.DATABASE_URL;
 
-const { schemaSql } = require('../../src/pgdb');
+const { schemaSql } = require('../../src/db');
 
 async function createTestDb() {
   const { PGlite } = await import('@electric-sql/pglite');

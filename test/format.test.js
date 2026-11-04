@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { firstLine } = require('../src/format');
-const { openDb } = require('../src/db');
+const { createTestDb } = require('./helpers/testDb');
 const { createProblem } = require('../src/repo');
 const { createApp } = require('../src/app');
 
@@ -26,11 +26,11 @@ test('firstLine: CRLF 줄바꿈도 처리', () => {
 });
 
 test('홈 목록에 문제 첫 줄이 보이고 긴 문제는 …로 잘리며 HTML은 이스케이프된다', async () => {
-  const db = openDb(':memory:');
+  const db = await createTestDb();
   const base = { subject: 'Java', solution: 's', result: '맞음', reason: null };
-  createProblem(db, { ...base, content: '학점 계산하기\n둘째 줄은 안 보임' });
-  createProblem(db, { ...base, content: '긴문제'.repeat(30) });
-  createProblem(db, { ...base, content: '<script>x</script>' });
+  await createProblem(db, { ...base, content: '학점 계산하기\n둘째 줄은 안 보임' });
+  await createProblem(db, { ...base, content: '긴문제'.repeat(30) });
+  await createProblem(db, { ...base, content: '<script>x</script>' });
   const server = createApp(db).listen(0);
   try {
     const html = await (await fetch(`http://localhost:${server.address().port}/`)).text();
@@ -40,5 +40,6 @@ test('홈 목록에 문제 첫 줄이 보이고 긴 문제는 …로 잘리며 H
     assert.ok(html.includes('&lt;script&gt;x&lt;/script&gt;'));
   } finally {
     server.close();
+    await db.close();
   }
 });

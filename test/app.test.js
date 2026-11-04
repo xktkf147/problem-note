@@ -1,18 +1,21 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { openDb } = require('../src/db');
+const { createTestDb } = require('./helpers/testDb');
 const { createApp } = require('../src/app');
 
 async function withServer(fn) {
-  const db = openDb(':memory:');
+  const db = await createTestDb();
   const server = createApp(db).listen(0);
   const base = `http://localhost:${server.address().port}`;
   try {
     await fn(base, db);
   } finally {
     server.close();
+    await db.close();
   }
 }
+
+const count = async (db, table) => (await db.query(`SELECT COUNT(*)::int AS n FROM ${table}`)).rows[0].n;
 
 const post = (url, data) =>
   fetch(url, {
@@ -61,12 +64,12 @@ test('틀린 이유 없이 틀림 저장은 거부되고 입력값이 남는다'
     const html = await r.text();
     assert.match(html, /틀린 이유를 입력해 주세요/);
     assert.match(html, /KEEPME/);
-    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM problems').get().n, 0);
+    assert.equal(await count(db, 'problems'), 0);
 
     await post(`${base}/problems`, { subject: 'Java', content: 'q', solution: 's', result: '맞음' });
     const r2 = await post(`${base}/problems/1/attempts`, { solution: 's2', result: '틀림' });
     assert.equal(r2.status, 400);
-    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM attempts').get().n, 1);
+    assert.equal(await count(db, 'attempts'), 1);
   });
 });
 
@@ -77,4 +80,30 @@ test('없는 문제는 404, 시도 수정·삭제 라우트는 없다', async ()
     assert.equal((await post(`${base}/problems/99/attempts`, { solution: 's', result: '맞음' })).status, 404);
     assert.equal((await fetch(`${base}/problems/1/attempts/1`, { method: 'DELETE' })).status, 404);
   });
+});
+
+test('integer 범위를 넘거나 0·음수인 id도 DB 오류 없이 404', async () => {
+  await withServer(async (base) => {
+    for (const id of ['99999999999', '0', '-1', '1.5']) {
+      assert.equal((await fetch(`${base}/problems/${id}`)).status, 404, id);
+    }
+    assert.equal((await post(`${base}/problems/99999999999/attempts`, { solution: 's', result: '맞음' })).status, 404);
+  });
+});
+
+test('DB 오류가 나면 내부 내용 없이 500', async () => {
+  const db = await createTestDb();
+  const broken = { ...db, query: async () => { throw new Error('secret-detail'); } };
+  const server = createApp(broken).listen(0);
+  const orig = console.error;
+  console.error = () => {};
+  try {
+    const r = await fetch(`http://localhost:${server.address().port}/`);
+    assert.equal(r.status, 500);
+    assert.doesNotMatch(await r.text(), /secret-detail/);
+  } finally {
+    console.error = orig;
+    server.close();
+    await db.close();
+  }
 });

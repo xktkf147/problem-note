@@ -1,64 +1,63 @@
 const { deriveStatus } = require('./status');
 
-function inTransaction(db, fn) {
-  db.exec('BEGIN');
-  try {
-    const out = fn();
-    db.exec('COMMIT');
-    return out;
-  } catch (err) {
-    db.exec('ROLLBACK');
-    throw err;
-  }
-}
-
-function insertAttempt(db, problemId, v) {
-  const { next } = db
-    .prepare('SELECT COALESCE(MAX(attempt_no), 0) + 1 AS next FROM attempts WHERE problem_id = ?')
-    .get(problemId);
-  db.prepare(
-    'INSERT INTO attempts (problem_id, attempt_no, solution, result, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(problemId, next, v.solution, v.result, v.reason, new Date().toISOString());
-  return next;
+// t는 db.tx 안에서 받은 트랜잭션 연결({ query })이다.
+async function insertAttempt(t, problemId, v) {
+  const { rows } = await t.query(
+    'SELECT COALESCE(MAX(attempt_no), 0) + 1 AS next FROM attempts WHERE problem_id = $1',
+    [problemId]
+  );
+  await t.query(
+    'INSERT INTO attempts (problem_id, attempt_no, solution, result, reason) VALUES ($1, $2, $3, $4, $5)',
+    [problemId, rows[0].next, v.solution, v.result, v.reason]
+  );
+  return rows[0].next;
 }
 
 // 문제와 첫 시도를 한 트랜잭션으로 저장하고 새 문제 id를 돌려준다.
+// 같은 과목의 동시 저장은 advisory lock으로 줄 세워 과목별 번호가 겹치지 않게 한다.
+// (최종 안전망은 UNIQUE (subject, number))
 function createProblem(db, v) {
-  return inTransaction(db, () => {
-    const { next } = db
-      .prepare('SELECT COALESCE(MAX(number), 0) + 1 AS next FROM problems WHERE subject = ?')
-      .get(v.subject);
-    const { lastInsertRowid } = db
-      .prepare('INSERT INTO problems (subject, number, content, created_at) VALUES (?, ?, ?, ?)')
-      .run(v.subject, next, v.content, new Date().toISOString());
-    insertAttempt(db, Number(lastInsertRowid), v);
-    return Number(lastInsertRowid);
+  return db.tx(async (t) => {
+    await t.query('SELECT pg_advisory_xact_lock(hashtext($1))', [v.subject]);
+    const { rows: num } = await t.query(
+      'SELECT COALESCE(MAX(number), 0) + 1 AS next FROM problems WHERE subject = $1',
+      [v.subject]
+    );
+    const { rows } = await t.query(
+      'INSERT INTO problems (subject, number, content) VALUES ($1, $2, $3) RETURNING id',
+      [v.subject, num[0].next, v.content]
+    );
+    await insertAttempt(t, rows[0].id, v);
+    return rows[0].id;
   });
 }
 
 // 기존 문제에 새 시도를 덧붙인다. 문제가 없으면 null.
+// 그 문제 행을 잠가 같은 문제의 동시 시도 추가가 번호를 겹치지 않게 한다.
 function addAttempt(db, problemId, v) {
-  return inTransaction(db, () => {
-    if (!db.prepare('SELECT 1 FROM problems WHERE id = ?').get(problemId)) return null;
-    return insertAttempt(db, problemId, v);
+  return db.tx(async (t) => {
+    const { rows } = await t.query('SELECT id FROM problems WHERE id = $1 FOR UPDATE', [problemId]);
+    if (rows.length === 0) return null;
+    return insertAttempt(t, problemId, v);
   });
 }
 
 // 문제 + 시도 목록(시도 순서대로) + 파생 상태. 없으면 null.
-function getProblem(db, id) {
-  const problem = db.prepare('SELECT * FROM problems WHERE id = ?').get(id);
-  if (!problem) return null;
-  const attempts = db
-    .prepare('SELECT * FROM attempts WHERE problem_id = ? ORDER BY attempt_no')
-    .all(id);
-  return { ...problem, attempts, status: deriveStatus(attempts.map((a) => a.result)) };
+async function getProblem(db, id) {
+  const { rows } = await db.query('SELECT * FROM problems WHERE id = $1', [id]);
+  if (rows.length === 0) return null;
+  const { rows: attempts } = await db.query(
+    'SELECT * FROM attempts WHERE problem_id = $1 ORDER BY attempt_no',
+    [id]
+  );
+  return { ...rows[0], attempts, status: deriveStatus(attempts.map((a) => a.result)) };
 }
 
 // 최신순 문제 목록(시도 횟수·파생 상태 포함). onlyWrong이면 상태가 '틀림'인 문제만.
-function listProblems(db, { onlyWrong = false } = {}) {
-  const problems = db.prepare('SELECT * FROM problems ORDER BY created_at DESC, id DESC').all();
+async function listProblems(db, { onlyWrong = false } = {}) {
+  const { rows: problems } = await db.query('SELECT * FROM problems ORDER BY created_at DESC, id DESC');
+  const { rows } = await db.query('SELECT problem_id, result FROM attempts ORDER BY problem_id, attempt_no');
   const resultsByProblem = new Map();
-  const rows = db.prepare('SELECT problem_id, result FROM attempts ORDER BY problem_id, attempt_no').all();
   for (const { problem_id, result } of rows) {
     if (!resultsByProblem.has(problem_id)) resultsByProblem.set(problem_id, []);
     resultsByProblem.get(problem_id).push(result);
@@ -72,17 +71,16 @@ function listProblems(db, { onlyWrong = false } = {}) {
 
 // 과목별 푼 문제 수와 오늘(한국 시간) 푼 문제 수.
 // 오늘 푼 문제 = 오늘 시도가 하나라도 있는 서로 다른 문제(다시 푼 문제 포함).
-function getSummary(db, now = new Date()) {
+async function getSummary(db, now = new Date()) {
   const summary = { Java: 0, DB: 0, today: 0 };
-  for (const { subject, n } of db.prepare('SELECT subject, COUNT(*) AS n FROM problems GROUP BY subject').all()) {
-    summary[subject] = n;
-  }
-  summary.today = db
-    .prepare(
-      `SELECT COUNT(DISTINCT problem_id) AS n FROM attempts
-       WHERE date(created_at, '+9 hours') = date(?, '+9 hours')`
-    )
-    .get(now.toISOString()).n;
+  const { rows } = await db.query('SELECT subject, COUNT(*)::int AS n FROM problems GROUP BY subject');
+  for (const { subject, n } of rows) summary[subject] = n;
+  const { rows: today } = await db.query(
+    `SELECT COUNT(DISTINCT problem_id)::int AS n FROM attempts
+     WHERE (created_at AT TIME ZONE 'Asia/Seoul')::date = ($1::timestamptz AT TIME ZONE 'Asia/Seoul')::date`,
+    [now.toISOString()]
+  );
+  summary.today = today[0].n;
   return summary;
 }
 

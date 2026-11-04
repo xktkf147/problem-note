@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createTestDb } = require('./helpers/testDb');
-const { schemaSql, sslOptions, createPgDb } = require('../src/pgdb');
+const { schemaSql, sslOptions, createPgDb } = require('../src/db');
 
 const NOW_PROBLEM = `INSERT INTO problems (subject, number, content) VALUES ('Java', 1, 'q')`;
 const attempt = (problemId, no, result, reason, solution = 's') => [

@@ -1,7 +1,7 @@
 // db/schema.sql을 DATABASE_URL의 DB에 적용한다. 멱등이라 여러 번 실행해도 된다.
 // DATABASE_SCHEMA를 주면(예: smoke) 그 스키마에 만든다. 시험이 끝나면 DROP SCHEMA ... CASCADE로 지운다.
 require('dotenv').config({ quiet: true });
-const { createPgDb, schemaSql } = require('../src/pgdb');
+const { createPgDb, schemaSql } = require('../src/db');
 
 async function main() {
   const url = process.env.DATABASE_URL;
