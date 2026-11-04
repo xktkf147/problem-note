@@ -2,13 +2,14 @@ const path = require('node:path');
 const express = require('express');
 const { validateProblem, validateAttempt } = require('./validate');
 const { createProblem, addAttempt, getProblem, listProblems, getSummary } = require('./repo');
-const { formatKst } = require('./format');
+const { formatKst, firstLine } = require('./format');
 
 function createApp(db) {
   const app = express();
   app.set('view engine', 'ejs');
   app.set('views', path.join(__dirname, '..', 'views'));
   app.locals.formatKst = formatKst;
+  app.locals.firstLine = firstLine;
   app.use(express.urlencoded({ extended: false }));
   app.use(express.static(path.join(__dirname, '..', 'public')));
 

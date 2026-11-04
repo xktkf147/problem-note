@@ -16,5 +16,7 @@ fieldset label { display: inline-block; margin-right: 1rem; }
 .summary strong { display: block; font-size: 1.8rem; }
 .summary span { color: #666; font-size: .9rem; }
 .problem-list { list-style: none; padding: 0; }
-.problem-list li { padding: .6rem 0; border-bottom: 1px solid #eee; display: flex; gap: .75rem; align-items: baseline; }
+.problem-list li { padding: .6rem 0; border-bottom: 1px solid #eee; }
+.problem-list .row { display: flex; gap: .75rem; align-items: baseline; }
+.problem-list .title { margin-top: .2rem; }
 .problem-list a { font-weight: bold; }

@@ -17,9 +17,12 @@
 <ul class="problem-list">
   <% problems.forEach((p) => { %>
   <li>
-    <a href="/problems/<%= p.id %>"><%= p.subject %> #<%= p.number %></a>
-    <span class="badge badge-<%= p.status %>"><%= p.status %></span>
-    <span class="meta">시도 <%= p.attemptCount %>회 · <%= formatKst(p.created_at) %></span>
+    <div class="row">
+      <a href="/problems/<%= p.id %>"><%= p.subject %> #<%= p.number %></a>
+      <span class="badge badge-<%= p.status %>"><%= p.status %></span>
+      <span class="meta">시도 <%= p.attemptCount %>회 · <%= formatKst(p.created_at) %></span>
+    </div>
+    <div class="title"><%= firstLine(p.content) %></div>
   </li>
   <% }) %>
 </ul>
