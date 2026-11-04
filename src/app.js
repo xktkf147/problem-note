@@ -5,6 +5,7 @@ const { createProblem, addAttempt, getProblem, listProblems, getSummary } = requ
 const { formatKst, firstLine } = require('./format');
 
 const MAX_ID = 2147483647; // Postgres integer 최대값
+const BODY_LIMIT = '100kb';
 
 // 숫자가 아니거나 integer 범위를 벗어난 id는 DB에 보내지 않고 없는 문제로 취급한다.
 function parseId(raw) {
@@ -19,7 +20,8 @@ function createApp(db) {
   app.set('views', path.join(__dirname, '..', 'views'));
   app.locals.formatKst = formatKst;
   app.locals.firstLine = firstLine;
-  app.use(express.urlencoded({ extended: false }));
+  // 로그인이 없으므로 외부에서 큰 본문으로 DB를 채우지 못하게 요청 크기를 제한한다.
+  app.use(express.urlencoded({ extended: false, limit: BODY_LIMIT }));
   app.use(express.static(path.join(__dirname, '..', 'public')));
 
   // Express 5는 async 핸들러가 던진 오류를 맨 아래 오류 처리기로 넘긴다.
@@ -68,8 +70,14 @@ function createApp(db) {
 
   // 내부 오류는 서버 로그에만 자세히 남기고, 화면에는 내용을 드러내지 않는다.
   app.use((err, req, res, next) => {
-    console.error(err);
     if (res.headersSent) return next(err);
+    if (err.status === 413) {
+      return res
+        .status(413)
+        .type('text/plain; charset=utf-8')
+        .send(`입력이 너무 깁니다. 한 번에 ${BODY_LIMIT} 이하로 저장해 주세요.`);
+    }
+    console.error(err);
     res.status(500).type('text/plain; charset=utf-8').send('서버 오류가 발생했습니다.');
   });
   return app;

@@ -91,6 +91,18 @@ test('integer 범위를 넘거나 0·음수인 id도 DB 오류 없이 404', asyn
   });
 });
 
+test('요청 본문이 100kb를 넘으면 413으로 거부하고 저장하지 않는다', async () => {
+  await withServer(async (base, db) => {
+    const r = await post(`${base}/problems`, { subject: 'Java', content: 'q', solution: 'x'.repeat(200 * 1024), result: '맞음' });
+    assert.equal(r.status, 413);
+    assert.match(await r.text(), /너무 깁니다/);
+    assert.equal(await count(db, 'problems'), 0);
+    // 한도 안의 큰 입력은 저장된다
+    const ok = await post(`${base}/problems`, { subject: 'Java', content: 'q', solution: 'x'.repeat(50 * 1024), result: '맞음' });
+    assert.equal(ok.status, 303);
+  });
+});
+
 test('DB 오류가 나면 내부 내용 없이 500', async () => {
   const db = await createTestDb();
   const broken = { ...db, query: async () => { throw new Error('secret-detail'); } };
